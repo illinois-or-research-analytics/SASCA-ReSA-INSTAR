@@ -902,11 +902,9 @@ std::vector<int> ABM::GetEligibleGeneratorNodes(Graph* graph, int graph_size, co
             if ((current_year - graph->GetIntAttribute("year", current_node_id)) > recency_threshold) {
             } else {
                 in_degree_eligible_generator_nodes.push_back({in_degree_arr[i], current_node_id});
-                if (graph->GetStringAttribute("type", current_node_id) == "seed") {
-                    fitness_eligible_generator_nodes.push_back({this->fitness_value_max, current_node_id});
-                } else {
-                    fitness_eligible_generator_nodes.push_back({fitness_arr[i], current_node_id});
-                }
+                // seeds are ranked by their own fitness (1 unless the nodelist says otherwise), as in citation
+                // scoring; before 6.4.0 they were ranked as fitness_value_max here
+                fitness_eligible_generator_nodes.push_back({fitness_arr[i], current_node_id});
             }
         }
     } else {
