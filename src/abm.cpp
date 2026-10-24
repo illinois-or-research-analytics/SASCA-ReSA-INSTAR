@@ -938,7 +938,12 @@ std::vector<int> ABM::GetEligibleGeneratorNodes(Graph* graph, int graph_size, co
             eligible_fitness_node_ids.insert(fitness_eligible_generator_nodes.at(i).second);
         }
     }
-    std::set_intersection(eligible_in_degree_node_ids.begin(), eligible_in_degree_node_ids.end(), eligible_fitness_node_ids.begin(), eligible_fitness_node_ids.end(), std::back_inserter(eligible_generator_nodes));
+    if (this->generator_eligibility == "or") {
+        std::set_union(eligible_in_degree_node_ids.begin(), eligible_in_degree_node_ids.end(), eligible_fitness_node_ids.begin(), eligible_fitness_node_ids.end(), std::back_inserter(eligible_generator_nodes));
+    } else {
+        std::set_intersection(eligible_in_degree_node_ids.begin(), eligible_in_degree_node_ids.end(), eligible_fitness_node_ids.begin(), eligible_fitness_node_ids.end(), std::back_inserter(eligible_generator_nodes));
+    }
+    this->WriteToLogFile("eligible generator nodes (" + this->generator_eligibility + "): " + std::to_string(eligible_generator_nodes.size()) + " of " + std::to_string(in_degree_eligible_generator_nodes.size()) + " within the recency window; " + std::to_string(eligible_in_degree_node_ids.size()) + " pass in-degree, " + std::to_string(eligible_fitness_node_ids.size()) + " pass fitness", Log::info);
     return eligible_generator_nodes;
 }
 
@@ -1609,6 +1614,11 @@ bool ABM::ValidateArguments() {
         return false;
     }
     this->WriteToLogFile("score_offset: " + std::to_string(this->score_offset), Log::info);
+    if (this->generator_eligibility != "and" && this->generator_eligibility != "or") {
+        this->WriteToLogFile("'generator_eligibility' must be 'and' or 'or' but was '" + this->generator_eligibility + "'", Log::error);
+        return false;
+    }
+    this->WriteToLogFile("generator_eligibility: " + this->generator_eligibility, Log::info);
     if (this->null_cartel) {
         this->WriteToLogFile("Using a null cartel model", Log::info);
     } else {
@@ -1814,7 +1824,7 @@ int ABM::main() {
                 std::vector<int> cartel_generator_nodes = this->GetCartelGeneratorNodes(graph, author_id);
                 std::vector<int> generator_nodes = this->GetGeneratorNodesFromSet(cartel_generator_nodes);
                 this->UpdateGraphAttributesGeneratorNodes(graph, new_node, generator_nodes);
-            } else if (new_node_non_random_draw < this->non_random_generator_probability) {
+            } else if (new_node_non_random_draw < this->non_random_generator_probability && !eligible_generator_nodes.empty()) {
                 std::vector<int> generator_nodes = this->GetGeneratorNodesFromSet(eligible_generator_nodes);
                 this->UpdateGraphAttributesGeneratorNodes(graph, new_node, generator_nodes);
             } else {
