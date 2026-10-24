@@ -1766,8 +1766,10 @@ int ABM::main() {
 
 
         std::vector<int> eligible_generator_nodes = this->GetEligibleGeneratorNodes(graph, current_graph_size, reverse_continuous_node_mapping, in_degree_arr, fitness_arr, this->in_degree_threshold, this->fitness_threshold, start_year, current_year, this->recency_threshold);
-        // generator_pool: restrict generators to agents. In the first simulated year there are no agents yet,
-        // so the pool stays all nodes.
+        // generator_pool: restrict generators to agents. While agents are fewer than half of the eligible set
+        // (always in the first simulated year, when there are no agents, and in early years, when the eligible
+        // papers are mostly seeds), the unfiltered eligible set is used, so that non-random draws are not
+        // concentrated on the first few agents to reach the in-degree cutoff.
         std::vector<int> agent_generator_nodes;
         if (this->generator_pool != "all") {
             for(int i = 0; i < current_graph_size; i ++) {
@@ -1776,13 +1778,13 @@ int ABM::main() {
                     agent_generator_nodes.push_back(current_node_id);
                 }
             }
-            if (!agent_generator_nodes.empty()) {
-                std::erase_if(eligible_generator_nodes, [&](int node_id) {return graph->GetStringAttribute("type", node_id) != "agent";});
-            }
-            if (agent_generator_nodes.empty()) {
-                this->WriteToLogFile("generator pool (" + this->generator_pool + "): no agents yet, so all nodes are used this year; " + std::to_string(eligible_generator_nodes.size()) + " eligible generators (unfiltered, all seeds)", Log::info);
+            std::vector<int> eligible_agent_generator_nodes;
+            std::copy_if(eligible_generator_nodes.begin(), eligible_generator_nodes.end(), std::back_inserter(eligible_agent_generator_nodes), [&](int node_id) {return graph->GetStringAttribute("type", node_id) == "agent";});
+            if (!agent_generator_nodes.empty() && 2 * eligible_agent_generator_nodes.size() >= eligible_generator_nodes.size()) {
+                this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents; " + std::to_string(eligible_agent_generator_nodes.size()) + " of " + std::to_string(eligible_generator_nodes.size()) + " eligible generators are agents, using agents only", Log::info);
+                eligible_generator_nodes = eligible_agent_generator_nodes;
             } else {
-                this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents; " + std::to_string(eligible_generator_nodes.size()) + " eligible generators are agents" + (eligible_generator_nodes.empty() ? " (none: non-random draws fall back to a random generator)" : ""), Log::info);
+                this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents; " + std::to_string(eligible_agent_generator_nodes.size()) + " of " + std::to_string(eligible_generator_nodes.size()) + " eligible generators are agents (fewer than half), using the unfiltered eligible set this year", Log::info);
             }
         }
         std::set<int> cartel_author_ids;
