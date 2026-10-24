@@ -1779,7 +1779,11 @@ int ABM::main() {
             if (!agent_generator_nodes.empty()) {
                 std::erase_if(eligible_generator_nodes, [&](int node_id) {return graph->GetStringAttribute("type", node_id) != "agent";});
             }
-            this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents" + (agent_generator_nodes.empty() ? " (none yet, using all nodes)" : "") + "; " + std::to_string(eligible_generator_nodes.size()) + " eligible generators after filtering", Log::info);
+            if (agent_generator_nodes.empty()) {
+                this->WriteToLogFile("generator pool (" + this->generator_pool + "): no agents yet, so all nodes are used this year; " + std::to_string(eligible_generator_nodes.size()) + " eligible generators (unfiltered, all seeds)", Log::info);
+            } else {
+                this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents; " + std::to_string(eligible_generator_nodes.size()) + " eligible generators are agents" + (eligible_generator_nodes.empty() ? " (none: non-random draws fall back to a random generator)" : ""), Log::info);
+            }
         }
         std::set<int> cartel_author_ids;
         for(auto const& cartel_id : graph->GetCartelSet()) {

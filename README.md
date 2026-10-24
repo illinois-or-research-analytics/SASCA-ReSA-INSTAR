@@ -6,6 +6,7 @@ The _Scalable Agent-based Simulator for Citation Analysis SASCA(-ReSA)_ is a sca
 
 ## Recent changelogs
 6.4.0 (SASCA-ReSA-INSTAR): Optional `generator_eligibility` flag (`and`, the default and 6.2.8 behavior, or `or`) sets whether a non-random generator must pass both the in-degree and fitness thresholds or either one. The size of the eligible set is logged each year. If the eligible set is empty, agents now fall back to a random generator (previously undefined behavior). Seeds are now ranked by their own fitness (1 by default, as used in citation scoring) in the eligibility test; before, they were ranked as `fitness_value_max` during the first `recency_threshold` years. This changes results only when `non_random_generator_probability` > 0. Optional `generator_pool` (`all`, the default; `agents_eligible`; `agents`) restricts generators to agents: only the non-random generators, or all generators. In the first simulated year, before any agents exist, all nodes remain eligible.
+ See [Generator selection](#generator-selection) for how this behaves in the first years of a run.
 
 6.3.0 (SASCA-ReSA-INSTAR): Score exponents and offset are configurable through the optional `score_exponent`, `pa_exponent`, `fitness_exponent`, `num_authors_exponent`, `author_reputation_exponent`, and `score_offset` flags (previously a constant `gamma = 3` and offset 1). Defaults reproduce 6.2.8. Removes an unused exponent lookup table.
 
@@ -242,3 +243,38 @@ Exponents must lie in [0, 10] (larger values overflow double precision for large
 - **γ** — the tail exponent of the resulting in-degree distribution, N(k) ∼ k^(−γ), an *output*. Redner (1998) measured γ ≈ 3 for real citation networks (he called it α).
 
 SASCA-ReSA and earlier models use β = 3 for all four scores, a superlinear design choice for an artificial generative model; it remains the default so earlier results are reproducible. INSTAR makes β configurable so its effect can be studied: β = 1 corresponds to the linear rule of Price (1976) and Barabási & Albert (1999), and `pa_exponent=1` sets it for the in-degree score. Note that β (an input) is distinct from the in-degree tail exponent γ (an output), e.g. Redner's (1998) γ ≈ 3. Because candidates are restricted to sampled neighborhoods and recency bins, cited without replacement, and scored by a mixture of four terms, the effective attachment kernel of the grown network can differ substantially from β and should be measured rather than assumed. A first comparison of β_P = 1 against β = 3 is in [docs/beta_comparison.md](docs/beta_comparison.md).
+
+
+## Generator selection
+Each new agent gets one *generator* paper; its citation candidates are drawn from the generator's 1- and 2-hop neighborhood (both directions). How the generator is chosen:
+
+1. Draw u ~ U(0,1). If u < `non_random_generator_probability` and the **eligible set** (below) is non-empty, pick a generator uniformly from the eligible set.
+2. Otherwise pick uniformly from the **generator pool**: all nodes (`generator_pool=all` or `agents_eligible`), or all agents (`generator_pool=agents`).
+3. Cartel authors are handled separately and always use cartel papers.
+
+**Eligible set**, recomputed every year:
+- Start from the papers published within the last `recency_threshold` years (the *window*).
+- *In-degree criterion*: papers whose current in-degree is at least that of the paper at the top `in_degree_threshold` percent of the window.
+- *Fitness criterion*: the same for current fitness and `fitness_threshold`.
+- Combine with `generator_eligibility`: `and` (both criteria) or `or` (either).
+- If `generator_pool` is `agents_eligible` or `agents`, remove seeds from the eligible set.
+
+Cutoffs are ranks within the whole window (seeds and agents together), and ties at the cutoff are all included. Seeds are ranked by their own fitness, which is 1 unless the nodelist says otherwise.
+
+### Early years: what actually happens
+The rules above interact with the seed network in the first years of a run, so "non-random" selection does not mean the same thing throughout. The log reports the window size, how many papers pass each criterion, the eligible set size and (with `generator_pool`) the agent pool each year, so the following can be checked for any run. Example: the multifield seed (26,686 seeds, 8,915 of them published in the 10 years before the first simulated year), `recency_threshold=10`, `in_degree_threshold=5`, `fitness_threshold=20`, `non_random_generator_probability=0.5`:
+
+| year | window | pass in-degree | pass fitness | eligible (`and`) | eligible (`or`) | eligible agents (`generator_pool=agents`) |
+|---|---|---|---|---|---|---|
+| 1 | 8,915 | 469 | 8,915 | 469 | 8,915 | no agents yet: all nodes used, 469 seeds eligible |
+| 2 | ~11.6k | ~600 | all | ~600 | all | **0** (pool: 3,582 year-1 agents) |
+| ~5 | ~25k | ~1,300 | ~21% | ~250 | ~26% | 184 |
+| ~10 | ~56k | ~3k | ~25% | ~1–2% | ~28% | 1,071 |
+| 30 | ~1M | ~5% | ~25% | ~1–2% | ~28% | 16,115 |
+
+What this means:
+- **Fitness passes everything at first.** While the window is mostly fitness-1 seeds, the fitness cutoff is 1 and every paper ties at it. Until roughly year 5 here, `and` means "top 5% by in-degree" and `or` means "any recent paper", i.e. close to random selection. The fitness criterion becomes selective once papers with fitness above 1 make up more than `fitness_threshold` percent of the window; with mostly fitness-1 papers, about 21–25% then pass, not exactly 20%.
+- **With `generator_pool=agents` or `agents_eligible`, the eligible set starts empty.** In year 1 there are no agents, so all nodes are used and the eligible set is 469 seeds. From year 2, seeds are removed, but agents cannot yet reach the in-degree cutoff, which is set by the seeds in the window: a year-1 paper has at most its same-year citations. The eligible set is therefore empty (0 in year 2 here), and every agent that draws "non-random" falls back to a random generator from the pool. With `generator_pool=agents`, every year-2 agent builds its neighborhood around one of last year's 3,582 papers. Agents enter the eligible set as they accumulate citations (184 by about year 5, about 1,000 by year 10). Until then, non-random selection is effectively random selection among agents, and seeds are reachable only as neighbors of agents' references.
+- **Possible variant (not implemented):** with an agents-only pool, the in-degree and fitness cutoffs could be ranked among the agents in the window rather than among all papers, so the eligible set would be non-empty from year 2.
+
+When comparing conditions, keep in mind that the generator rules change behavior over the first ~5–10 years of a run. Measures computed on early cohorts mix the two regimes.
