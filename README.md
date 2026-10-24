@@ -63,7 +63,7 @@ The general command is given below.
 abm --config <Configuration file>
 ```
 
-An example configuration file, shown below, is also provided in the docs folder [Example configuration file](docs/example.ini)
+An example configuration file, shown below, is also provided in the docs folder [Sample configuration file](docs/SASCA-ReSA-INSTAR.sample.config.ini) (a working 30-year baseline run on the multifield seed, with every flag commented)
 Brief comments for each flag is listed inside the example configuration file. Detailed explanations for each of the flags are at the end of this section. All flags are required to be present in the configuration file, except those marked optional (the score exponent flags), which may be omitted entirely. Unused flags can simply be left empty but the flag itself must still be present.
 
 
