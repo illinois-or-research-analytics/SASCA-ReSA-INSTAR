@@ -264,17 +264,22 @@ Cutoffs are ranks within the whole window (seeds and agents together), and ties 
 ### Early years: what actually happens
 The rules above interact with the seed network in the first years of a run, so "non-random" selection does not mean the same thing throughout. The log reports the window size, how many papers pass each criterion, the eligible set size and (with `generator_pool`) the agent pool each year, so the following can be checked for any run. Example: the multifield seed (26,686 seeds, 8,915 of them published in the 10 years before the first simulated year), `recency_threshold=10`, `in_degree_threshold=5`, `fitness_threshold=20`, `non_random_generator_probability=0.5`:
 
-| year | window | pass in-degree | pass fitness | eligible (`and`) | eligible (`or`) | eligible agents (`generator_pool=agents`) |
-|---|---|---|---|---|---|---|
-| 1 | 8,915 | 469 | 8,915 | 469 | 8,915 | no agents yet: all nodes used, 469 seeds eligible |
-| 2 | ~11.6k | ~600 | all | ~600 | all | **0** (pool: 3,582 year-1 agents) |
-| ~5 | ~25k | ~1,300 | ~21% | ~250 | ~26% | 184 |
-| ~10 | ~56k | ~3k | ~25% | ~1–2% | ~28% | 1,071 |
-| 30 | ~1M | ~5% | ~25% | ~1–2% | ~28% | 16,115 |
+| year | window | pass in-degree | pass fitness | eligible (`and`) | eligible agents (`generator_pool=agents`) |
+|---|---|---|---|---|---|
+| 1 | 8,915 | 469 | all | 469 | no agents yet: all nodes used, 469 seeds eligible |
+| 2 | 11,563 | 614 | all | 614 | **0** (pool: 3,582 year-1 agents) |
+| 3 | 14,738 | 760 | all | 760 | **15** (pool: 7,644) |
+| 4 | 18,384 | 924 | all | 924 | **69** |
+| 5 | 22,668 | 1,135 | all | 1,135 | 184 |
+| 6 | 27,646 | 1,407 | 5,920 (21%) | 184 | 184 |
+| 10 | 56,771 | 2,968 | 14,083 (25%) | 1,071 | 1,071 |
+| 30 | 736,785 | 38,428 | 184,304 (25%) | 16,115 | 16,115 |
+
+(From one `generator_eligibility=and` run with `generator_pool=agents` and `fully_random_citations=0.01`; other runs differ slightly.)
 
 What this means:
-- **Fitness passes everything at first.** While the window is mostly fitness-1 seeds, the fitness cutoff is 1 and every paper ties at it. Until roughly year 5 here, `and` means "top 5% by in-degree" and `or` means "any recent paper", i.e. close to random selection. The fitness criterion becomes selective once papers with fitness above 1 make up more than `fitness_threshold` percent of the window; with mostly fitness-1 papers, about 21–25% then pass, not exactly 20%.
-- **With `generator_pool=agents` or `agents_eligible`, the eligible set starts empty.** In year 1 there are no agents, so all nodes are used and the eligible set is 469 seeds. From year 2, seeds are removed, but agents cannot yet reach the in-degree cutoff, which is set by the seeds in the window: a year-1 paper has at most its same-year citations. The eligible set is therefore empty (0 in year 2 here), and every agent that draws "non-random" falls back to a random generator from the pool. With `generator_pool=agents`, every year-2 agent builds its neighborhood around one of last year's 3,582 papers. Agents enter the eligible set as they accumulate citations (184 by about year 5, about 1,000 by year 10). Until then, non-random selection is effectively random selection among agents, and seeds are reachable only as neighbors of agents' references.
+- **Fitness passes everything at first.** While the window is mostly fitness-1 seeds, the fitness cutoff is 1 and every paper ties at it. Through year 5 here, `and` means "top 5% by in-degree" and `or` means "any recent paper", i.e. close to random selection. The fitness criterion becomes selective once papers with fitness above 1 make up more than `fitness_threshold` percent of the window; with mostly fitness-1 papers, about 21–25% then pass, not exactly 20%.
+- **With `generator_pool=agents` or `agents_eligible`, the eligible set starts empty.** In year 1 there are no agents, so all nodes are used and the eligible set is 469 seeds. From year 2, seeds are removed, but agents cannot yet reach the in-degree cutoff, which is set by the seeds in the window: a year-1 paper has at most its same-year citations. The eligible set is therefore empty (0 in year 2 here), and every agent that draws "non-random" falls back to a random generator from the pool. With `generator_pool=agents`, every year-2 agent builds its neighborhood around one of last year's 3,582 papers. Agents enter the eligible set as they accumulate citations: 15 in year 3, 69 in year 4, 184 in year 5, 1,071 in year 10. While the set is tiny, the non-random half of new agents all draw from the same few papers (in year 3, roughly 2,300 agents share 15 generators), which concentrates early citation. Until then, non-random selection is effectively random selection among agents, and seeds are reachable only as neighbors of agents' references.
 - **Possible variant (not implemented):** with an agents-only pool, the in-degree and fitness cutoffs could be ranked among the agents in the window rather than among all papers, so the eligible set would be non-empty from year 2.
 
 When comparing conditions, keep in mind that the generator rules change behavior over the first ~5–10 years of a run. Measures computed on early cohorts mix the two regimes.
