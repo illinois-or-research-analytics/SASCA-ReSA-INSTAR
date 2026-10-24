@@ -120,6 +120,14 @@ int main(int argc, char* argv[]) {
     int fitness_threshold = reader.GetInteger("Agent", "fitness_threshold", -42);
     int recency_threshold = reader.GetInteger("Agent", "recency_threshold", -42);
     double non_random_generator_probability = reader.GetReal("Agent", "non_random_generator_probability", -42);
+    // Optional score exponents: score(x) = max(x^exponent, 1) + score_offset. score_exponent sets all four;
+    // a per-score key overrides it. Defaults (3 and 1) reproduce SASCA-ReSA 6.2.8, where the exponent was a constant.
+    double score_exponent = reader.GetReal("Agent", "score_exponent", 3);
+    double pa_exponent = reader.GetReal("Agent", "pa_exponent", score_exponent);
+    double fitness_exponent = reader.GetReal("Agent", "fitness_exponent", score_exponent);
+    double num_authors_exponent = reader.GetReal("Agent", "num_authors_exponent", score_exponent);
+    double author_reputation_exponent = reader.GetReal("Agent", "author_reputation_exponent", score_exponent);
+    double score_offset = reader.GetReal("Agent", "score_offset", 1);
     std::string start_from_checkpoint_string = reader.Get("Environment", "start_from_checkpoint", "");
     bool start_from_checkpoint = false;
     if (start_from_checkpoint_string == "true") {
@@ -138,7 +146,7 @@ int main(int argc, char* argv[]) {
     std::string log_file = reader.Get("General", "log_file", "");
     int num_processors = reader.GetInteger("General", "num_processors", -42);
     int log_level = reader.GetInteger("General", "log_level", -41) - 1;
-    ABM* abm = new ABM(edgelist, nodelist, out_degree_bag, recency_table, recency_bins, alpha, minimum_alpha, use_alpha, start_from_checkpoint, planted_nodes, fully_random_citations, preferential_weight, fitness_weight, num_authors_weight, author_reputation_weight, fitness_value_min, fitness_value_max,  fitness_lag_duration_min, fitness_lag_duration_max, fitness_peak_duration_min, fitness_peak_duration_max, minimum_preferential_weight, minimum_fitness_weight, in_degree_threshold, fitness_threshold, recency_threshold, non_random_generator_probability, growth_rate, num_cycles, same_year_citations, neighborhood_sample, num_authors_bag, author_max_lifetime, cartel_outdegree_proportion, null_cartel, output_file, clonal_cartel_agent_file, auxiliary_information_file, log_file, num_processors, log_level);
+    ABM* abm = new ABM(edgelist, nodelist, out_degree_bag, recency_table, recency_bins, alpha, minimum_alpha, use_alpha, start_from_checkpoint, planted_nodes, fully_random_citations, preferential_weight, fitness_weight, num_authors_weight, author_reputation_weight, fitness_value_min, fitness_value_max,  fitness_lag_duration_min, fitness_lag_duration_max, fitness_peak_duration_min, fitness_peak_duration_max, minimum_preferential_weight, minimum_fitness_weight, in_degree_threshold, fitness_threshold, recency_threshold, non_random_generator_probability, pa_exponent, fitness_exponent, num_authors_exponent, author_reputation_exponent, score_offset, growth_rate, num_cycles, same_year_citations, neighborhood_sample, num_authors_bag, author_max_lifetime, cartel_outdegree_proportion, null_cartel, output_file, clonal_cartel_agent_file, auxiliary_information_file, log_file, num_processors, log_level);
     abm->main();
     delete abm;
 }

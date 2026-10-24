@@ -1,6 +1,12 @@
+# SASCA-ReSA-INSTAR
+
 The _Scalable Agent-based Simulator for Citation Analysis SASCA(-ReSA)_ is a scalable agent-based modeling simulator that can begin with a small seed network and simulate an exponential network growth to reach sizes of 100 million nodes and more. Currently, SASCA is implemented in modern C++ and can be run across hundreds of cores.
 
+**SASCA-ReSA-INSTAR** is derived from [SASCA-ReSA](https://github.com/illinois-or-research-analytics/SASCA-ReSA) 6.2.8 (commit `5fc654b`), whose full history this repository carries. It makes the exponents of the agent scoring functions configurable instead of fixed at 3 (see [Score exponents](#score-exponents-and-notation)). With the new keys omitted, it behaves exactly like SASCA-ReSA 6.2.8, so existing configuration files run unchanged. (An *instar* is the developmental stage between molts.)
+
 ## Recent changelogs
+6.3.0 (SASCA-ReSA-INSTAR): Score exponents and offset are configurable through the optional `score_exponent`, `pa_exponent`, `fitness_exponent`, `num_authors_exponent`, `author_reputation_exponent`, and `score_offset` flags (previously a constant `gamma = 3` and offset 1). Defaults reproduce 6.2.8. Removes an unused exponent lookup table.
+
 6.2.8: Adds out-degree safeguarding based on the constant in the header file of abm and the input out-degree bag file.
 
 6.2.7: Fixes a bug with initial author reputation when only one node exists in the final year of the seed set and a brand new author gets assigned to it
@@ -57,8 +63,8 @@ The general command is given below.
 abm --config <Configuration file>
 ```
 
-An example configuration file, shown below, is also provided in the docs folder [Example configuration file](docs/example.ini)
-Brief comments for each flag is listed inside the example configuration file. Detailed explanations for each of the flags are at the end of this section. All flags are required to be present in the configuration file. Unused flags can simply be left empty but the flag itself must still be present.
+An example configuration file, shown below, is also provided in the docs folder [Sample configuration file](docs/SASCA-ReSA-INSTAR.sample.config.ini) (a working 30-year baseline run on the multifield seed, with every flag commented)
+Brief comments for each flag is listed inside the example configuration file. Detailed explanations for each of the flags are at the end of this section. All flags are required to be present in the configuration file, except those marked optional (the score exponent flags), which may be omitted entirely. Unused flags can simply be left empty but the flag itself must still be present.
 
 
 ```
@@ -98,6 +104,12 @@ num_authors_bag=<FILE> ; used for sampling the number of authors per paper
 cartel_outdegree_proportion=<DOUBLE> ; the proportion of out-degree that should go towards within the cartel group. See below for important cartel information.
 null_cartel=<BOOL> ; boolean value e.g., true or false for whether to have cartel nodes cite randomly within the cartel or not. See below for important cartel information.
 clonal_cartel_agent_file<(optional) FILE> ; csv with clonal agent attributes. See below for important cartel information.
+score_exponent=<(optional) DOUBLE> ; exponent for all four agent scores, default 3. See Score exponents below.
+pa_exponent=<(optional) DOUBLE> ; exponent for the preferential attachment (in-degree) score, default score_exponent
+fitness_exponent=<(optional) DOUBLE> ; exponent for the fitness score, default score_exponent
+num_authors_exponent=<(optional) DOUBLE> ; exponent for the number-of-authors score, default score_exponent
+author_reputation_exponent=<(optional) DOUBLE> ; exponent for the author reputation score, default score_exponent
+score_offset=<(optional) DOUBLE> ; constant added to every score, default 1
 
 [General]
 output_file=<FILE> ; output csv edgelist
@@ -169,6 +181,7 @@ In order to do a "single-bin model" run, in which agents cite based on preferent
 - `null_cartel` : boolean value e.g., true or false for whether to have cartel nodes cite randomly within the cartel or not. Set this to either true or falses even if there are no cartel authors. It will not be used if there are no cartel authors. True means "cartel-r" and False means "cartel-p". **See below for important cartel information.**
 - `clonal_cartel_agent_file` : csv with clonal agent attributes. The allowed columns are num\_authors,pa\_weight,fit\_weight,num\_authors\_weight,author\_reputation\_weight,out\_degree,alpha,fitness\_lag\_duration,fitness\_peak\_value, and fitness\_peak\_duration. The order of the columns do not matter, and any subset of these columns can be used and others omitted in the csv file. All cartel agents (cartel-r, cartel-p, or control) inherit these attributes. ( **See below for important cartel information.**
 
+- `score_exponent`, `pa_exponent`, `fitness_exponent`, `num_authors_exponent`, `author_reputation_exponent`, `score_offset`: optional. See [Score exponents and notation](#score-exponents-and-notation).
 
 #### General flags
 - `output_file`: output csv edgelist file.
@@ -195,3 +208,31 @@ Remember that
 
 ## Fitness Information
 For constant fitness, set minimum/maximum fitness lag duration to be 0 and minimum/maximum fitness peak duration to be 1000.
+
+
+## Score exponents and notation
+When an agent chooses whom to cite among a set of candidate nodes, each candidate gets four raw scores computed from its in-degree, fitness, number of authors, and author reputation. For a raw value x, the score is
+
+```
+score(x) = max(x^β, 1) + C
+```
+
+normalized to sum to 1 over the network, and the four normalized scores are mixed using the agent's weights (`pa_weight`, `fit_weight`, `num_authors_weight`, `author_reputation_weight`). In SASCA-ReSA 6.2.8 and earlier, β was the constant `gamma = 3` and C was 1 for all four scores. Here they are set by:
+
+| flag | symbol | applies to | default |
+|---|---|---|---|
+| `pa_exponent` | β_P | in-degree (preferential attachment) | `score_exponent` |
+| `fitness_exponent` | β_F | fitness | `score_exponent` |
+| `num_authors_exponent` | β_A | number of authors | `score_exponent` |
+| `author_reputation_exponent` | β_R | author reputation | `score_exponent` |
+| `score_exponent` | — | all four, unless overridden | 3 |
+| `score_offset` | C | all four | 1 |
+
+Exponents must lie in [0, 10] (larger values overflow double precision for large in-degrees or fitness values) and C must be non-negative. The values used are written to the log file at startup. Note the floor: with C = 1, x = 0 and x = 1 both score 2.
+
+**Notation.** Three different quantities are easily confused, so we name them separately:
+- **α** (`alpha`) — the locality parameter: the fraction of neighborhood citations made to distance-1 nodes of the generator. Unchanged.
+- **β** — the exponent of the attachment rule above, an *input*. β = 1 is linear preferential attachment as in Price (1976) and Barabási & Albert (1999); β > 1 is superlinear.
+- **γ** — the tail exponent of the resulting in-degree distribution, N(k) ∼ k^(−γ), an *output*. Redner (1998) measured γ ≈ 3 for real citation networks (he called it α).
+
+SASCA-ReSA and earlier models use β = 3 for all four scores, a superlinear design choice for an artificial generative model; it remains the default so earlier results are reproducible. INSTAR makes β configurable so its effect can be studied: β = 1 corresponds to the linear rule of Price (1976) and Barabási & Albert (1999), and `pa_exponent=1` sets it for the in-degree score. Note that β (an input) is distinct from the in-degree tail exponent γ (an output), e.g. Redner's (1998) γ ≈ 3. Because candidates are restricted to sampled neighborhoods and recency bins, cited without replacement, and scored by a mixture of four terms, the effective attachment kernel of the grown network can differ substantially from β and should be measured rather than assumed. A first comparison of β_P = 1 against β = 3 is in [docs/beta_comparison.md](docs/beta_comparison.md).

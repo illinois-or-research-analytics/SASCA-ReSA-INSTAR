@@ -492,11 +492,11 @@ void ABM::CalculateTanhScores(std::unordered_map<int, double>& cached_results, i
     }
 }
 
-void ABM::CalculateExpScores(std::unordered_map<int, double>& cached_results, int* src_arr, double* dst_arr, int len) {
+void ABM::CalculateExpScores(int* src_arr, double* dst_arr, int len, double exponent) {
     double sum = 0;
     #pragma omp parallel for reduction(+:sum)
     for(int i = 0; i < len; i ++) {
-        double current_dst = std::max(pow(src_arr[i], this->gamma), 1.0) + 1;
+        double current_dst = std::max(pow(src_arr[i], exponent), 1.0) + this->score_offset;
         dst_arr[i] = current_dst;
         sum += current_dst;
     }
@@ -1593,6 +1593,22 @@ bool ABM::ValidateArguments() {
     if (!this->ValidateArgument("Agent", "non_random_generator_probability", this->non_random_generator_probability, -42)) {
         return false;
     }
+    const std::vector<std::pair<std::string, double>> score_exponents = {
+        {"pa_exponent", this->pa_exponent}, {"fitness_exponent", this->fitness_exponent},
+        {"num_authors_exponent", this->num_authors_exponent}, {"author_reputation_exponent", this->author_reputation_exponent}};
+    for(auto const& [exponent_name, exponent_value] : score_exponents) {
+        // upper bound keeps x^exponent finite in double precision for in-degrees/fitness values seen in practice
+        if (exponent_value < 0 || exponent_value > 10) {
+            this->WriteToLogFile("'" + exponent_name + "' must be between 0 and 10 but was " + std::to_string(exponent_value), Log::error);
+            return false;
+        }
+        this->WriteToLogFile(exponent_name + ": " + std::to_string(exponent_value), Log::info);
+    }
+    if (this->score_offset < 0) {
+        this->WriteToLogFile("'score_offset' must be non-negative but was " + std::to_string(this->score_offset), Log::error);
+        return false;
+    }
+    this->WriteToLogFile("score_offset: " + std::to_string(this->score_offset), Log::info);
     if (this->null_cartel) {
         this->WriteToLogFile("Using a null cartel model", Log::info);
     } else {
@@ -1700,10 +1716,6 @@ int ABM::main() {
     std::vector<int> new_nodes_vec;
     std::vector<std::pair<int, int>> new_edges_vec;
     std::set<int> same_year_source_nodes;
-    std::unordered_map<int, double> exp_cached_results;
-    for(int i = 0; i < 1000; i ++) {
-        exp_cached_results[i] = std::max(pow(i, this->gamma), 1.0) + 1;
-    }
     std::unordered_map<int, double> binned_recency_probabilities = GetBinnedRecencyProbabilities();
     Eigen::setNbThreads(1);
     pcg_extras::seed_seq_from<std::random_device> rand_dev;
@@ -1717,11 +1729,11 @@ int ABM::main() {
         this->LogTime(current_year, "Fill in-degree array");
         this->FillFitnessArr(graph, continuous_node_mapping, current_year, fitness_arr);
         this->LogTime(current_year, "Fill fitness array");
-        this->CalculateExpScores(exp_cached_results, in_degree_arr, pa_arr, current_graph_size);
+        this->CalculateExpScores(in_degree_arr, pa_arr, current_graph_size, this->pa_exponent);
         this->LogTime(current_year, "Process in-degree array");
-        this->CalculateExpScores(exp_cached_results, fitness_arr, fit_arr, current_graph_size);
+        this->CalculateExpScores(fitness_arr, fit_arr, current_graph_size, this->fitness_exponent);
         this->LogTime(current_year, "Process fitness array");
-        this->CalculateExpScores(exp_cached_results, num_authors_arr, na_arr, current_graph_size);
+        this->CalculateExpScores(num_authors_arr, na_arr, current_graph_size, this->num_authors_exponent);
         this->LogTime(current_year, "Process num authors array");
 
         /* initialize new nodes */
@@ -1814,7 +1826,7 @@ int ABM::main() {
 
         this->FillAuthorReputationArr(graph, continuous_node_mapping, author_reputation_arr);
         this->LogTime(current_year, "Fill author reputation array");
-        this->CalculateExpScores(exp_cached_results, author_reputation_arr, ar_arr, current_graph_size);
+        this->CalculateExpScores(author_reputation_arr, ar_arr, current_graph_size, this->author_reputation_exponent);
         this->LogTime(current_year, "Process author reputation array");
 
         std::vector<int> sampled_neighborhood_sizes_map(new_nodes_vec.size());
