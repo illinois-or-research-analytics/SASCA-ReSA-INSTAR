@@ -902,11 +902,9 @@ std::vector<int> ABM::GetEligibleGeneratorNodes(Graph* graph, int graph_size, co
             if ((current_year - graph->GetIntAttribute("year", current_node_id)) > recency_threshold) {
             } else {
                 in_degree_eligible_generator_nodes.push_back({in_degree_arr[i], current_node_id});
-                if (graph->GetStringAttribute("type", current_node_id) == "seed") {
-                    fitness_eligible_generator_nodes.push_back({this->fitness_value_max, current_node_id});
-                } else {
-                    fitness_eligible_generator_nodes.push_back({fitness_arr[i], current_node_id});
-                }
+                // seeds are ranked by their own fitness (1 unless the nodelist says otherwise), as in citation
+                // scoring; before 6.4.0 they were ranked as fitness_value_max here
+                fitness_eligible_generator_nodes.push_back({fitness_arr[i], current_node_id});
             }
         }
     } else {
@@ -938,7 +936,12 @@ std::vector<int> ABM::GetEligibleGeneratorNodes(Graph* graph, int graph_size, co
             eligible_fitness_node_ids.insert(fitness_eligible_generator_nodes.at(i).second);
         }
     }
-    std::set_intersection(eligible_in_degree_node_ids.begin(), eligible_in_degree_node_ids.end(), eligible_fitness_node_ids.begin(), eligible_fitness_node_ids.end(), std::back_inserter(eligible_generator_nodes));
+    if (this->generator_eligibility == "or") {
+        std::set_union(eligible_in_degree_node_ids.begin(), eligible_in_degree_node_ids.end(), eligible_fitness_node_ids.begin(), eligible_fitness_node_ids.end(), std::back_inserter(eligible_generator_nodes));
+    } else {
+        std::set_intersection(eligible_in_degree_node_ids.begin(), eligible_in_degree_node_ids.end(), eligible_fitness_node_ids.begin(), eligible_fitness_node_ids.end(), std::back_inserter(eligible_generator_nodes));
+    }
+    this->WriteToLogFile("eligible generator nodes (" + this->generator_eligibility + "): " + std::to_string(eligible_generator_nodes.size()) + " of " + std::to_string(in_degree_eligible_generator_nodes.size()) + " within the recency window; " + std::to_string(eligible_in_degree_node_ids.size()) + " pass in-degree, " + std::to_string(eligible_fitness_node_ids.size()) + " pass fitness", Log::info);
     return eligible_generator_nodes;
 }
 
@@ -1609,6 +1612,21 @@ bool ABM::ValidateArguments() {
         return false;
     }
     this->WriteToLogFile("score_offset: " + std::to_string(this->score_offset), Log::info);
+    if (this->generator_eligibility != "and" && this->generator_eligibility != "or") {
+        this->WriteToLogFile("'generator_eligibility' must be 'and' or 'or' but was '" + this->generator_eligibility + "'", Log::error);
+        return false;
+    }
+    this->WriteToLogFile("generator_eligibility: " + this->generator_eligibility, Log::info);
+    if (this->generator_pool != "all" && this->generator_pool != "agents_eligible" && this->generator_pool != "agents") {
+        this->WriteToLogFile("'generator_pool' must be 'all', 'agents_eligible' or 'agents' but was '" + this->generator_pool + "'", Log::error);
+        return false;
+    }
+    this->WriteToLogFile("generator_pool: " + this->generator_pool, Log::info);
+    if (this->generator_pool_min_agent_share < 0 || this->generator_pool_min_agent_share > 1) {
+        this->WriteToLogFile("'generator_pool_min_agent_share' must be between 0 and 1 but was " + std::to_string(this->generator_pool_min_agent_share), Log::error);
+        return false;
+    }
+    this->WriteToLogFile("generator_pool_min_agent_share: " + std::to_string(this->generator_pool_min_agent_share), Log::info);
     if (this->null_cartel) {
         this->WriteToLogFile("Using a null cartel model", Log::info);
     } else {
@@ -1753,6 +1771,29 @@ int ABM::main() {
 
 
         std::vector<int> eligible_generator_nodes = this->GetEligibleGeneratorNodes(graph, current_graph_size, reverse_continuous_node_mapping, in_degree_arr, fitness_arr, this->in_degree_threshold, this->fitness_threshold, start_year, current_year, this->recency_threshold);
+        // generator_pool: restrict generators to agents. While agents are less than generator_pool_min_agent_share of the eligible set
+        // (always in the first simulated year, when there are no agents, and in early years, when the eligible
+        // papers are mostly seeds), the unfiltered eligible set is used, so that non-random draws are not
+        // concentrated on the first few agents to reach the in-degree cutoff.
+        std::vector<int> agent_generator_nodes;
+        if (this->generator_pool != "all") {
+            for(int i = 0; i < current_graph_size; i ++) {
+                int current_node_id = reverse_continuous_node_mapping.at(i);
+                if (graph->GetStringAttribute("type", current_node_id) == "agent") {
+                    agent_generator_nodes.push_back(current_node_id);
+                }
+            }
+            std::vector<int> eligible_agent_generator_nodes;
+            std::copy_if(eligible_generator_nodes.begin(), eligible_generator_nodes.end(), std::back_inserter(eligible_agent_generator_nodes), [&](int node_id) {return graph->GetStringAttribute("type", node_id) == "agent";});
+            if (!agent_generator_nodes.empty() && eligible_agent_generator_nodes.size() >= this->generator_pool_min_agent_share * eligible_generator_nodes.size()) {
+                this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents; " + std::to_string(eligible_agent_generator_nodes.size()) + " of " + std::to_string(eligible_generator_nodes.size()) + " eligible generators are agents, using agents only", Log::info);
+                eligible_generator_nodes = eligible_agent_generator_nodes;
+            } else if (agent_generator_nodes.empty()) {
+                this->WriteToLogFile("generator pool (" + this->generator_pool + "): no agents yet, so all nodes are used this year; " + std::to_string(eligible_generator_nodes.size()) + " eligible generators (unfiltered, all seeds)", Log::info);
+            } else {
+                this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents; " + std::to_string(eligible_agent_generator_nodes.size()) + " of " + std::to_string(eligible_generator_nodes.size()) + " eligible generators are agents (below the minimum share), using the unfiltered eligible set this year", Log::info);
+            }
+        }
         std::set<int> cartel_author_ids;
         for(auto const& cartel_id : graph->GetCartelSet()) {
             std::set<int> current_cartel_authors = graph->GetCartelAuthors(cartel_id);
@@ -1814,8 +1855,11 @@ int ABM::main() {
                 std::vector<int> cartel_generator_nodes = this->GetCartelGeneratorNodes(graph, author_id);
                 std::vector<int> generator_nodes = this->GetGeneratorNodesFromSet(cartel_generator_nodes);
                 this->UpdateGraphAttributesGeneratorNodes(graph, new_node, generator_nodes);
-            } else if (new_node_non_random_draw < this->non_random_generator_probability) {
+            } else if (new_node_non_random_draw < this->non_random_generator_probability && !eligible_generator_nodes.empty()) {
                 std::vector<int> generator_nodes = this->GetGeneratorNodesFromSet(eligible_generator_nodes);
+                this->UpdateGraphAttributesGeneratorNodes(graph, new_node, generator_nodes);
+            } else if (this->generator_pool == "agents" && !agent_generator_nodes.empty()) {
+                std::vector<int> generator_nodes = this->GetGeneratorNodesFromSet(agent_generator_nodes);
                 this->UpdateGraphAttributesGeneratorNodes(graph, new_node, generator_nodes);
             } else {
                 std::vector<int> generator_nodes = this->GetGeneratorNodes(graph, reverse_continuous_node_mapping);
