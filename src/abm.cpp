@@ -1617,6 +1617,11 @@ bool ABM::ValidateArguments() {
         return false;
     }
     this->WriteToLogFile("generator_eligibility: " + this->generator_eligibility, Log::info);
+    if (this->generator_pool != "all" && this->generator_pool != "agents_eligible" && this->generator_pool != "agents") {
+        this->WriteToLogFile("'generator_pool' must be 'all', 'agents_eligible' or 'agents' but was '" + this->generator_pool + "'", Log::error);
+        return false;
+    }
+    this->WriteToLogFile("generator_pool: " + this->generator_pool, Log::info);
     if (this->null_cartel) {
         this->WriteToLogFile("Using a null cartel model", Log::info);
     } else {
@@ -1761,6 +1766,21 @@ int ABM::main() {
 
 
         std::vector<int> eligible_generator_nodes = this->GetEligibleGeneratorNodes(graph, current_graph_size, reverse_continuous_node_mapping, in_degree_arr, fitness_arr, this->in_degree_threshold, this->fitness_threshold, start_year, current_year, this->recency_threshold);
+        // generator_pool: restrict generators to agents. In the first simulated year there are no agents yet,
+        // so the pool stays all nodes.
+        std::vector<int> agent_generator_nodes;
+        if (this->generator_pool != "all") {
+            for(int i = 0; i < current_graph_size; i ++) {
+                int current_node_id = reverse_continuous_node_mapping.at(i);
+                if (graph->GetStringAttribute("type", current_node_id) == "agent") {
+                    agent_generator_nodes.push_back(current_node_id);
+                }
+            }
+            if (!agent_generator_nodes.empty()) {
+                std::erase_if(eligible_generator_nodes, [&](int node_id) {return graph->GetStringAttribute("type", node_id) != "agent";});
+            }
+            this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents" + (agent_generator_nodes.empty() ? " (none yet, using all nodes)" : "") + "; " + std::to_string(eligible_generator_nodes.size()) + " eligible generators after filtering", Log::info);
+        }
         std::set<int> cartel_author_ids;
         for(auto const& cartel_id : graph->GetCartelSet()) {
             std::set<int> current_cartel_authors = graph->GetCartelAuthors(cartel_id);
@@ -1824,6 +1844,9 @@ int ABM::main() {
                 this->UpdateGraphAttributesGeneratorNodes(graph, new_node, generator_nodes);
             } else if (new_node_non_random_draw < this->non_random_generator_probability && !eligible_generator_nodes.empty()) {
                 std::vector<int> generator_nodes = this->GetGeneratorNodesFromSet(eligible_generator_nodes);
+                this->UpdateGraphAttributesGeneratorNodes(graph, new_node, generator_nodes);
+            } else if (this->generator_pool == "agents" && !agent_generator_nodes.empty()) {
+                std::vector<int> generator_nodes = this->GetGeneratorNodesFromSet(agent_generator_nodes);
                 this->UpdateGraphAttributesGeneratorNodes(graph, new_node, generator_nodes);
             } else {
                 std::vector<int> generator_nodes = this->GetGeneratorNodes(graph, reverse_continuous_node_mapping);
