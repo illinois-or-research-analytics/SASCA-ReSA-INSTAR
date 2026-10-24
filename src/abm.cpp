@@ -1788,6 +1788,8 @@ int ABM::main() {
             if (!agent_generator_nodes.empty() && eligible_agent_generator_nodes.size() >= this->generator_pool_min_agent_share * eligible_generator_nodes.size()) {
                 this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents; " + std::to_string(eligible_agent_generator_nodes.size()) + " of " + std::to_string(eligible_generator_nodes.size()) + " eligible generators are agents, using agents only", Log::info);
                 eligible_generator_nodes = eligible_agent_generator_nodes;
+            } else if (agent_generator_nodes.empty()) {
+                this->WriteToLogFile("generator pool (" + this->generator_pool + "): no agents yet, so all nodes are used this year; " + std::to_string(eligible_generator_nodes.size()) + " eligible generators (unfiltered, all seeds)", Log::info);
             } else {
                 this->WriteToLogFile("generator pool (" + this->generator_pool + "): " + std::to_string(agent_generator_nodes.size()) + " agents; " + std::to_string(eligible_agent_generator_nodes.size()) + " of " + std::to_string(eligible_generator_nodes.size()) + " eligible generators are agents (below the minimum share), using the unfiltered eligible set this year", Log::info);
             }
