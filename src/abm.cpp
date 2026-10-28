@@ -1596,6 +1596,13 @@ bool ABM::ValidateArguments() {
     if (!this->ValidateArgument("Agent", "non_random_generator_probability", this->non_random_generator_probability, -42)) {
         return false;
     }
+    if (this->non_random_generator_probability <= 0) {
+        this->WriteToLogFile("generator selection is random (non_random_generator_probability: " + std::to_string(this->non_random_generator_probability) + ")", Log::info);
+    } else if (this->non_random_generator_probability >= 1) {
+        this->WriteToLogFile("generator selection is non-random (non_random_generator_probability: " + std::to_string(this->non_random_generator_probability) + ")", Log::info);
+    } else {
+        this->WriteToLogFile("generator selection is non-random with probability " + std::to_string(this->non_random_generator_probability) + ", otherwise random", Log::info);
+    }
     const std::vector<std::pair<std::string, double>> score_exponents = {
         {"pa_exponent", this->pa_exponent}, {"fitness_exponent", this->fitness_exponent},
         {"num_authors_exponent", this->num_authors_exponent}, {"author_reputation_exponent", this->author_reputation_exponent}};
